@@ -1,9 +1,19 @@
 #!/bin/sh
+set -x
 
-parent_dir="$(dirname "$0")"
-for dir in "$parent_dir/env_files"/*; do
+parent_dir="$PWD"
+date_time=$(date +"%Y-%m""_%H-%M")
+for dir in "$parent_dir/env_files"/*.env; do
     dir_name="${dir%/}"
-    echo "Running script for folder: $dir"
-    export dir_name
-    python main.py --input "$dir_name"
-done
+
+    set -a
+    source "$dir_name"
+    set +a
+
+
+    export ENV_FILE_PATH="$dir_name"
+    export BASH_TIME="$date_time"
+    echo "Running script for folder: $dir_name"
+    python main.py
+
+done 

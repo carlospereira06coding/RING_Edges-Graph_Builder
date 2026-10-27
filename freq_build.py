@@ -19,115 +19,70 @@ class FREQ_TABLE(BUILD_TABLE):
         self.bond_freq= pd.DataFrame()
         self.group_freq= pd.DataFrame()
 
-    def cell_split(self, cell:str)->int:
-        #Separate HBOND:MC_MC VDW:MC_SC --> ["HBOND:MC_MC","VDW:MC_SC"] = 2
-        try: 
-            if isinstance(cell,str) and cell.strip():
-                lst=cell.split()
-                return len(lst)
-            return 0
-        except:
-            return 0 #if cell is NaN: 0
+    def unpack_row(self, row):
+        
+        models = [model for model in row._fields if model != "Index"]
+        """
+        O que é uma nova interação? Procuramos todas as interações diferentes registadas na linha.
+        """
 
+        row_freq={}
+        for model in models:
+            BOND=getattr(row, model)
+            if isinstance(BOND, str):
+                interactions=BOND.split()
+                for inter in interactions:
+                    row_freq[inter]=1
 
-    def aa_freq_calc(self):
-            """
+        return row_freq
+    
+
+    def single_aa_freq_calc(self, df:pd.DataFrame):
+
+        """
             Build frequency table not for interaction pairs, 
             but for single amino acids.
-            """
-            pass
+        
+        """
 
-    """def select_interval(self, domain_1:str, domain_2:str)-> pd.DataFrame: 
-        #Separate intervals into 
-        lower_d1, top_d1 = map(int, re.split(r'[-:,]', domain_1)) # Separates 45-219 into integers 45,219
-        lower_d2, top_d2 = map(int, re.split(r'[-:,]', domain_2))
+        def transform(name:pd.Index)->pd.Index:
+            return name.map(lambda a: a.split(":")[0])
 
-        df = self.ct_data
-        # Separate ResNum column into 2 integer columns
-        print("FILTER: ", list(df.columns), list(df.index.names))
+        freq_df = df.groupby(by=transform(df.index)).sum()
+        return freq_df
 
-        res_split = df.loc["Pair"].str.split(":", expand=True).astype(int) # Separation of ResNum column into 2 integer columns
-        res_1: pd.Series[int] = res_split[0]
-        res_2: pd.Series[int] = res_split[1]
 
-        #Selecting rows through vectorized filtering
-        mask = (
-        (res_1 >= lower_d1) & (res_1 <= top_d1)
-        & (res_2 >= lower_d2) & (res_2 <= top_d2)
-        )
-
-        return df[mask]"""
     
-    def bond_freq_calc(self, columns, build_csv:bool, grouped=False)->pd.DataFrame:
+    def bond_freq_calc(self, columns)->pd.DataFrame:
 
-        def _strip_bond(value):
-                if pd.isna(value):
-                    return np.nan
-                return str(value).split(":")[0]
+        def row_parser(dict:dict):
+            for bond in list(dict.keys()):
+                curr_value = dict.get(bond)
+                new_name = str(bond.split(":")[0])
+                if dict.get(new_name) != None:
+                    dict[new_name] += curr_value
+                    del dict[bond]
+                else:
+                    dict[new_name] = dict.pop(bond)
 
-        split_df = self.ct_data[["ResNum","Amino Acid"]].apply(lambda col: col.str.split(":"))
         
-        pair_index = (split_df["Amino Acid"].str[0]) + (split_df["ResNum"].str[0]) + ":" + (split_df["Amino Acid"].str[1]) + (split_df["ResNum"].str[1])
-
-        df = (
-            self.ct_data[columns].assign(Pair=pair_index).set_index("Pair")
+        df = self.ct_data
+        #print("CT_DATA: ", self.ct_data.iloc[:3])
+        self.bond_freq = pd.DataFrame(
+            columns=["HBOND", "IONIC", "PICATION", "PIPISTACK", "VDW"], 
         )
 
-        for col in columns:# COLUMNS is the interval we are searching (CONTROL or TEST)
-            #Change column values, ignoring SC/MC. "HBOND"--> ttk_human_model_0_HBOND
-            df[col] = df[col].map(_strip_bond)
+        self.bond_freq.index.name = "Pair"
 
-        #df.to_csv(path_or_buf=Path(".").resolve().parent/"BITCH.csv", sep=";")
+        print("FREQ_BUILD (INDEX)", df.index.names)
+        print("FREQ_BUILD (COLUMNS)", df.columns)
+        print("SELECTED columns: ", columns)
 
-        #One Hot Encode columns except index "Pair". 
-        dummy_encoded = pd.get_dummies(df, columns=columns, dtype='int')
+        for row in df[columns].itertuples(index=True):
+            row_freq = self.unpack_row(row=row)
+            row_parser(dict=row_freq)
+            self.bond_freq.loc[row.Index] = pd.Series(row_freq)
 
-        #dummy_encoded.to_csv(path_or_buf=Path(".").resolve().parent/"DUMMY.csv",sep=";")
-
-
-        """
-        val in df[col].unique(): unique value in current dataframe column;
-        val for col in df.columns: iterate through each column in dataframe
-
-        """
-        unique_bond = {str(val) for col in df.columns for val in df[col].unique() if pd.notna(val)}
-        
-        """
-
-        #Sum frequency for each type of bond type: count of models with that bond in that interaction pair
-        bond_freq_data = {
-            bond: dummy_encoded[[c for c in dummy_encoded.columns if c.endswith(f"_{bond}")]].sum(axis=1)
-            for bond in unique_bond
-        }
-        self.bond_freq = pd.DataFrame(bond_freq_data, index=dummy_encoded.index)
-        """
-
-        lookup_dict = {}
-
-        for col in dummy_encoded.columns:
-            suff = col.split("_")[-1]  # Splits column name string and extracts suffix
-            if suff in lookup_dict:
-                lookup_dict[suff].append(col)
-            else:
-                lookup_dict[suff]=[col]
-
-
-        bond_freq_data = {
-            bond: dummy_encoded[[col for col in lookup_dict[bond]]].sum(axis=1) for bond in unique_bond
-        }
-
-
-        self.bond_freq = pd.DataFrame(bond_freq_data, index=dummy_encoded.index)
-        #self.bond_freq.to_csv(path_or_buf=Path(".").resolve().parent/"BOND_FREQ_F.csv", sep=";")
-
-        self.bond_freq.to_csv(path_or_buf=Path(".").resolve().parent/"bond_model_freq.csv", sep=";", index=True)
-
-        if grouped:
-            self.group_freq = pd.DataFrame(self.bond_freq.sum(axis=1))
-            if build_csv:
-                self.bond_freq.to_csv(path_or_buf=Path(output_dir)/"grouped_model_freq.csv", sep=";", index=False)
-
-        if build_csv:
-            #self.bond_freq.to_csv(path_or_buf=Path(output_dir)/"bond_model_freq.csv", sep=";", index=True)
-            pass
+        self.bond_freq.fillna(value=0, inplace=True)
+                    
         return self.bond_freq
