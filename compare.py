@@ -9,15 +9,6 @@ class BUILD_TABLE():
         self.AA_columns : list[str]
         pass
 
-    def file_build(self, filename:str, data:pd.DataFrame): #Build every dataframe as a csv file 
-
-        try:
-            data.to_csv(path_or_buf=Path(output_dir) / f"{filename}.csv", sep=";")
-            data.fillna("--").to_html(buf=Path(output_dir) / f"{filename}.html")
-
-        #log created file in run cycle log
-        except:
-            pass #Log failed attempt
 
     def select_interval(self, domains:list[list[int]]): 
         """
@@ -26,19 +17,11 @@ class BUILD_TABLE():
 
         pass
 
-    def build_table(self, paths_dict: dict[str, tuple[list[Path],list[str]]], interval_check:bool=False, build_csv:bool=True,**kwargs): #If TRUE, generate a csv file. ELSE save pd in BUILD_TABLE.data
+    def build_table(self, pathlist): #If TRUE, generate a csv file. ELSE save pd in BUILD_TABLE.data
 
-        self.ct_data = pd.DataFrame(columns=["ResNum","Amino Acid"])
-        self.ct_data = self.ct_data.set_index("ResNum", drop=False)
+        self.ct_data = pd.DataFrame()
+        self.ct_data.index.name = "ResNum"
 
-
-        control_tuple = paths_dict.get("CONTROL", ([], [])) #Empty lists garantees a obbject != None if the key isnt found in the dictionary.
-        test_tuple = paths_dict.get("TEST", ([], []))
-
-        control_paths, self.CONTROL_columns = control_tuple
-        test_paths, self.AA_columns = test_tuple
-
-        pathlist = control_paths + test_paths
 
         for RING_path in pathlist:
 
@@ -53,8 +36,11 @@ class BUILD_TABLE():
                     id1 = int(str(row['NodeId1']).split(':')[1])
                     id2 = int(str(row['NodeId2']).split(':')[1])
 
-                    id_set = f"{min(id1, id2)}:{max(id1,id2)}"
-                    amino_acid = f"{str(row['NodeId1']).split(":")[3]}:{str(row['NodeId2']).split(":")[3]}" #ILE:SEP
+                    #id_set = f"{min(id1, id2)}:{max(id1,id2)}"
+                    aa1 = str(row['NodeId1']).split(":")[3]
+                    aa2 = str(row['NodeId2']).split(":")[3] #ILE:SEP
+                    id_set = f"{id1}{aa1}:{id2}{aa2}"
+                    
                     missing_bond = pd.isna(row['Interaction']) #Returns (in this case) a Series of all Nan values in the current column of RING data 
                     new_bond = f"{(row['Interaction'])}"
 
@@ -71,10 +57,8 @@ class BUILD_TABLE():
                             self.ct_data.loc[id_set, file_name] = " ".join(sorted(existing_bond))
 
                     #That interaction wasnt scanned before: add to file
-                    if id_set not in self.ct_data.index:
+                    else:
                         self.ct_data.loc[id_set, file_name] = None if missing_bond else str(row['Interaction'])
-                        self.ct_data.loc[id_set, "ResNum"] = id_set
-                        self.ct_data.loc[id_set, "Amino Acid"] = amino_acid
 
                 #self.ct_data = self.ct_data.set_index(["ResNum","Amino Acid"])
                 logging.info("PASS: Compare_table datagrame was built successfully")
@@ -85,13 +69,9 @@ class BUILD_TABLE():
                 #Stop run cycle if so.
                 raise RuntimeError("Critical error from build_table.") from e
 
-        filename = f"compare_table_{now}"
-        if interval_check:
-            self.select_interval(**kwargs)
-            self.file_build(data=self.ct_data, filename=filename)
-
-        elif build_csv:
-            self.file_build(data=self.ct_data, filename=filename)
+        """if interval_check:
+            self.select_interval(**kwargs)"""
+        
 
         print("COMPARE (INDEX): ", list(self.ct_data.index.names))
         print("COMPARE (COLUMNS): ", list(self.ct_data.columns)) #if you print with .names, it gives you the COLUMNS ROW index, not the COLUMNS names!!!
