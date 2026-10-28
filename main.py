@@ -180,7 +180,7 @@ if __name__ == "__main__":
 
     T = BUILD_TABLE()
     T.build_table(
-        paths_dict=control_paths+test_paths,
+        pathlist=control_paths+test_paths
     )
 
     """
